@@ -1,0 +1,67 @@
+name: DevSecOps Automated Security Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  code-security-and-linting:
+    name: Code Security & SAST
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Verify Go Dependencies
+        run: go mod verify
+
+      - name: Run Go Vulncheck (Official Go SCA)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Run Semgrep SAST Scan
+        uses: semgrep/action@v1
+        with:
+          config: p/golang
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+  container-security:
+    name: Distoless Container Security Scan
+    runs-on: ubuntu-latest
+    needs: code-security-and-linting
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Distroless Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: architect-api:ci-test
+
+      - name: Run Trivy Container Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'architect-api:ci-test'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
