@@ -30,11 +30,8 @@ jobs:
           govulncheck ./...
 
       - name: Run Semgrep SAST Scan
-        uses: semgrep/action@v1
-        with:
-          config: p/golang
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" semgrep/semgrep semgrep scan --config p/golang
 
   container-security:
     name: Distoless Container Security Scan
